@@ -1,0 +1,49 @@
+* {
+  box-sizing: border-box;
+}
+
+.container, #app, body, html {
+  height: 100%;
+}
+
+.container {
+  position: relative;
+}
+
+.board, .vertical-divider, .ball, .paddle, .score {
+  position: absolute;
+  background-color: white;
+  color: white;
+}
+
+.board, .score {
+  background-color: black;
+}
+
+.vertical-divider {
+  top: 0;
+  left: 50%;
+  border-left: 1px dashed white;
+  background-color: black;
+  height: 100%;
+}
+
+.score {
+  padding: 15px;
+  font-size: 36px;
+  font-family: fantasy;
+}
+
+.left.score {
+  left: 25%;
+  transform: translateX(-50%);
+}
+
+.right.score {
+  left: 75%;
+  transform: translateX(-50%);
+}
+
+.ball {
+  border-radius: 50%;
+}

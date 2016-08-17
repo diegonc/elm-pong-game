@@ -58,3 +58,106 @@ generate the *elm-stuff* directory.
 >
 >    Currently Elm code is compiled to one file and JS code to
 >    another. Production builds will only minify JS code.
+
+# 1. A Static Pong: planning the Model and View
+
+The game presents its users just a few onscreen elements
+* the scoreboard
+* the table with a vertical division at its half
+* the ball
+* two paddles, one on each side of the table
+
+Wikipedia's Pong page gives some insight into the mechanics of
+game play
+* paddle divided into eight segments to change the ball's angle of return
+
+        +--+
+        |  | z          Where
+        |  | y            90 > x > y > z > 0
+        |  | x
+        |  | 90°
+        |  | 90°
+        |  | x
+        |  | y
+        |  | z
+        +--+
+
+* the ball accelerates the longer it remains in play; missing the ball reset
+the speed
+* paddles are unable to reach the top of screen. (I'll do the same
+for the bottom)
+
+I'll assume the board aspect ratio to be 4:3 and to simplify the code the view
+will use a 1:1 scale.
+
+### Model
+
+With the above in mind, a sketch of the model can be produced.
+There needs to be a board of a given size, the left and right
+player scores, the left and right paddles' position and size
+and the ball position and speed vectors. Maybe a paused state too.
+
+I'll define the following type aliases which will be contained by the
+top-level `Model` record. I'm doing this to get a feel of how nested
+record updating works in Elm.
+
+```elm
+type alias Board =
+  {
+    height: Int
+  , width : Int
+  }
+```
+
+```elm
+type alias Paddle =
+  {
+    position: (Int, Int)
+  , size    : Int
+  }
+```
+
+```elm
+type alias Ball =
+  {
+    position: (Int, Int)     -- (x, y)
+  , speed   : (Float, Float) -- (v, θ)
+  }
+```
+
+```elm
+type alias Player =
+  {
+    score : Int
+  , paddle: Paddle
+  }
+```
+
+And finally the `Model` type is
+```elm
+type alias Model =
+  {
+    board: Board
+  , ball: Ball
+  , left: Player
+  , right: Player
+  }
+```
+
+### View
+
+The view is quite simple, it just consists of nested `div`s that are
+absolute positioned and whose `left` and `top` properties are adjusted
+according to the model.
+
+    div.container
+      div.board
+        div.container
+          div.vertical-divider
+          div.left-score
+          div.right-score
+          div.left-paddle
+          div.right-paddle
+          div.ball
+
+`container`s are relative positioned while other divs have absolute position.
