@@ -1,7 +1,9 @@
-module Pong exposing (init, view)
+module Pong exposing (init, view, update, subscriptions)
 
+import AnimationFrame
 import Html exposing (Html, div, text)
 import Html.Attributes exposing (class, style)
+import Time exposing (Time)
 
 
 -- MODEL
@@ -21,11 +23,10 @@ type alias Paddle =
 
 type alias Ball =
     { position :
-        ( Int, Int )
+        ( Float, Float )
         -- (x, y)
-    , size :
-        ( Int, Int )
-        -- (width, height)
+    , diameter :
+        Int
     , speed :
         ( Float, Float )
         -- (v, θ)
@@ -87,22 +88,145 @@ init boardHeight paddleHeight =
     in
         { board = Board boardHeight boardWidth
         , ball =
-            Ball ( boardWidth // 2, boardHeight // 2 ) ( 10, 10 ) ( 0, 0 )
-            -- TODO: hardcoded ball size (10,10)...
+            Ball ( (toFloat boardWidth) / 2, (toFloat boardHeight) / 2 ) 10 ( 75, 2.3 )
+            -- TODO: hardcoded ball diameter 10...
+            -- TODO: hardcoded ball speed (75, 2.3)...
         , left = leftPlayer
         , right = rightPlayer
         }
 
 
 
+-- MSG
+
+
+type Msg
+    = Advance Time
+
+
+
+-- UPDATE
+
+
+update : Msg -> Model -> ( Model, Cmd Msg )
+update msg model =
+    case msg of
+        Advance time ->
+            ( advanceWorld model time
+            , Cmd.none
+            )
+
+
+advanceWorld : Model -> Time -> Model
+advanceWorld model elapsed =
+    model
+        |> moveBall elapsed
+        |> constrainAndFlip
+
+
+constrainAndFlip : Model -> Model
+constrainAndFlip model =
+    let
+        ( x, y ) =
+            model.ball.position
+
+        r =
+            (toFloat model.ball.diameter) / 2
+
+        { height, width } =
+            model.board
+    in
+        if (y + r) > (toFloat height) || (y - r) < 0 then
+            { model
+                | ball =
+                    model.ball
+                        |> flipSpeed Vertical
+                        |> constrain ( 0, 0, width, height )
+            }
+        else if (x + r) > (toFloat width) || (x - r) < 0 then
+            { model
+                | ball =
+                    model.ball
+                        |> flipSpeed Horizontal
+                        |> constrain ( 0, 0, width, height )
+            }
+        else
+            model
+
+
+constrain : ( Int, Int, Int, Int ) -> Ball -> Ball
+constrain ( left, top, right, bottom ) ball =
+    let
+        r =
+            (toFloat ball.diameter) / 2
+
+        newX =
+            ball.position
+                |> fst
+                |> min ((toFloat right) - r)
+                |> max ((toFloat left) + r)
+
+        newY =
+            ball.position
+                |> snd
+                |> min ((toFloat bottom) - r)
+                |> max ((toFloat top) + r)
+    in
+        { ball | position = ( newX, newY ) }
+
+
+type FlipAxis
+    = Horizontal
+    | Vertical
+
+
+flipSpeed : FlipAxis -> Ball -> Ball
+flipSpeed axis ball =
+    let
+        ( vx, vy ) =
+            fromPolar ball.speed
+    in
+        case axis of
+            Horizontal ->
+                { ball | speed = toPolar ( -vx, vy ) }
+
+            Vertical ->
+                { ball | speed = toPolar ( vx, -vy ) }
+
+
+moveBall : Time -> Model -> Model
+moveBall elapsed model =
+    let
+        dt =
+            Time.inSeconds elapsed
+
+        ( vx, vy ) =
+            fromPolar model.ball.speed
+
+        dx =
+            model.ball.position
+                |> fst
+                |> (+) (vx * dt)
+
+        dy =
+            model.ball.position
+                |> snd
+                |> (+) (-vy * dt)
+
+        ball =
+            model.ball
+
+        newBall =
+            { ball | position = ( dx, dy ) }
+    in
+        { model | ball = newBall }
+
+
+
 -- VIEW
 
 
-type alias MyHtml =
-    Html Never
-
-
-view : Model -> MyHtml
+view : Model -> Html Msg
 view { board, ball, left, right } =
     div [ class "container" ]
         [ div [ class "board", style <| boardStyles board ]
@@ -129,28 +253,25 @@ boardStyles board =
     ]
 
 
-ballView : Ball -> MyHtml
+ballView : Ball -> Html a
 ballView ball =
     let
         ( x, y ) =
             ball.position
-
-        ( w, h ) =
-            ball.size
     in
         div
             [ class "ball"
             , style
-                [ ( "left", toPx x )
-                , ( "top", toPx y )
-                , ( "height", toPx h )
-                , ( "width", toPx w )
+                [ ( "left", toPx (round x) )
+                , ( "top", toPx (round y) )
+                , ( "height", toPx ball.diameter )
+                , ( "width", toPx ball.diameter )
                 ]
             ]
             []
 
 
-paddleView : Board -> Paddle -> MyHtml
+paddleView : Board -> Paddle -> Html a
 paddleView board paddle =
     let
         ( x, y ) =
@@ -174,3 +295,12 @@ paddleView board paddle =
 toPx : Int -> String
 toPx i =
     (toString i) ++ "px"
+
+
+
+-- SUBSCRIPTIONS
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    AnimationFrame.diffs Advance

@@ -161,3 +161,51 @@ according to the model.
           div.ball
 
 `container`s are relative positioned while other divs have absolute position.
+
+# 2. Let the Ball Move: using subscriptions for animation
+
+Subscriptions allow Elm programs to be notified of external events they
+are interested in. The `program` function from the `Html.App` module allows
+the programmer to specify a subscription function which takes the model and
+returns to the runtime the subscriptions that must be established.
+
+Then the Elm's runtime will call our update function with the configured
+message every time there's an event available.
+
+To animate the ball we need to give it an initial speed and subscribe to
+request animation frame events to update its position. The relevant package
+is `elm-lang/animation-frame`, which provides a `diffs` function to create
+a subscription that will notify on each frame providing the elapsed time.
+
+A new update function and accompanying message type shall be introduced
+to handle those events.
+
+```elm
+type Msg
+    = Advance Time
+```
+
+The subscriptions must be requested by writing and handing in a function
+to `program` from `Html.App`.
+
+```elm
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    AnimationFrame.diffs Advance
+```
+
+And then the `update` function should respond to the `Advance` message by
+adjusting the ball position according to the elapsed time and its speed and
+checking collisions with the board.
+
+```elm
+update : Msg -> Model -> ( Model, Cmd Msg )
+update msg model =
+    case msg of
+        Advance time ->
+            ( advanceWorld model time
+            , Cmd.none
+            )
+```
+
+where `advanceWorld` is a function calculating the physics of the Pong game.

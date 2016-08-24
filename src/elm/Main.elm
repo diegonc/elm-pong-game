@@ -1,13 +1,14 @@
 module Main exposing (..)
 
 import Html.App as App
-import Pong exposing (init, view)
+import Pong exposing (init, view, update, subscriptions)
 
 
 main : Program Never
 main =
-    App.beginnerProgram
-        { model = init 300 50
+    App.program
+        { init = ( init 300 50, Cmd.none )
         , view = view
-        , update = curry snd
+        , update = update
+        , subscriptions = subscriptions
         }
