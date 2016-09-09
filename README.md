@@ -209,3 +209,108 @@ update msg model =
 ```
 
 where `advanceWorld` is a function calculating the physics of the Pong game.
+
+# 3. Use the Paddle, Willy: keyCodes and the downs and ups subscriptions
+
+The `Keyboard` module provides subscriptions to the stream of Keyboard
+related events like key downs, presses and ups.
+
+> **Note** after a brief exploration of the `presses` subscription
+> I discovered that simultaneous key presses will not trigger the
+> repetition of `keypress` events for both keys but only for the last one.
+>
+> Thus, the following section will use `keydown` to set the paddle speed
+> in the model and `keyup` to reset it to zero. The animation will then
+> update the position of the paddles when updating the world.
+>
+> It's a bit more complicated but a least both paddles will be able to
+> to be moved at the same time. :smile:
+
+The `Keyboard.downs` function creates a subscription that posts a
+message on each keydown event. The message payload is the character produced
+by the keyCode property of the event object, as computed by the `fromCode`
+function from the `Char` module.
+
+Likewise, the `Keyboard.ups` function gives a subscription for keyup events.
+Again, the message is going to hold the corresponding character.
+
+The following keys will be assigned to actions on the paddles:
+* Q -> left paddle up
+* A -> left paddle down
+* O -> right paddle up
+* L -> right paddle down
+
+> **Note** characters given by `Char.fromCode` are _uppercased_.
+
+So the `Msg` type needs to have `KeyDown` and `KeyUp` cases to handle those new
+messages.
+
+```elm
+type Msg
+    = Advance Time
+    | KeyDown Char
+    | KeyUp Char
+```
+
+And the `subscriptions` function needs to be updated to return the `Sub`s
+given by `downs` and `ups`. But those subscriptions need to be running at the
+same time as the `AnimationFrame.diffs` introduced in the previous section;
+`Sub.batch` is the function that composes a list of unrelated subscriptions
+into one `Sub` value that can be returned.
+
+```elm
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    Sub.batch
+      [ AnimationFrame.diffs Advance
+      , Keyboard.downs (Char.fromCode >> KeyDown)
+      , Keyboard.ups (Char.fromCode >> KeyUp)
+      ]
+```
+
+Now the update function needs to handle the new messages otherwise
+the compiler will reject the code.
+
+Update will just set the speed of the paddle while `updateWorld` will handle
+the calculation of its position on every tick.
+
+```elm
+update : Msg -> Model -> (Model, Cmd Msg)
+update msg model =
+  case msg of
+    ...
+    KeyUp key ->
+      case key of
+        'Q' -> (stopPaddle Left model, Cmd.none)
+        'A' -> (stopPaddle Left model, Cmd.none)
+        'O' -> (stopPaddle Right model, Cmd.none)
+        'L' -> (stopPaddle Right model, Cmd.none)
+        _ -> (model, Cmd.none)
+    KeyDown key ->
+      case key of
+        'Q' -> (speedPaddle Left Up model, Cmd.none)
+        'A' -> (speedPaddle Left Down model, Cmd.none)
+        'O' -> (speedPaddle Right Up model, Cmd.none)
+        'L' -> (speedPaddle Right Down model, Cmd.none)
+        _ -> (model, Cmd.none)
+```
+
+where two types where introduced to avoid spreading the specific key
+all over the application: `WhichPaddle` and `WhichDirection`.
+
+```elm
+type WhichPaddle
+    = Left
+    | Right
+
+
+type WhichDirection
+    = Up
+    | Down
+```
+
+`speedPaddle` will set the speed of the given paddle to some positive or
+negative value depending on the requested direction. `stopPaddle` will set
+the speed of the given paddle back to zero.
+
+`advanceWorld` needs to be taught how to move and constrain the paddles.

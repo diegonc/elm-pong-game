@@ -4,6 +4,8 @@ import AnimationFrame
 import Html exposing (Html, div, text)
 import Html.Attributes exposing (class, style)
 import Time exposing (Time)
+import Keyboard
+import Char
 
 
 -- MODEL
@@ -16,7 +18,8 @@ type alias Board =
 
 
 type alias Paddle =
-    { position : ( Int, Int )
+    { position : ( Float, Float )
+    , speed : ( Float, Float )
     , size : Int
     }
 
@@ -52,13 +55,13 @@ aspectRatio =
     4.0 / 3.0
 
 
-calculatePaddleWidth : Int -> Int
+calculatePaddleWidth : Int -> Float
 calculatePaddleWidth height =
     let
         factor =
             0.1
     in
-        round <| (toFloat height) * factor
+        (toFloat height) * factor
 
 
 init : Int -> Int -> Model
@@ -75,14 +78,19 @@ init boardHeight paddleHeight =
 
         leftPlayer =
             { score = 0
-            , paddle = Paddle ( paddleSpacing, boardHeight // 2 ) paddleHeight
+            , paddle =
+                Paddle
+                    ( paddleSpacing, (toFloat boardHeight) / 2 )
+                    ( 0, 0 )
+                    paddleHeight
             }
 
         rightPlayer =
             { score = 0
             , paddle =
                 Paddle
-                    ( boardWidth - paddleWidth - paddleSpacing, boardHeight // 2 )
+                    ( (toFloat boardWidth) - paddleWidth - paddleSpacing, (toFloat boardHeight) / 2 )
+                    ( 0, 0 )
                     paddleHeight
             }
     in
@@ -102,6 +110,8 @@ init boardHeight paddleHeight =
 
 type Msg
     = Advance Time
+    | KeyUp Char
+    | KeyDown Char
 
 
 
@@ -116,16 +126,187 @@ update msg model =
             , Cmd.none
             )
 
+        KeyUp key ->
+            case key of
+                'Q' ->
+                    ( stopPaddle Left model, Cmd.none )
+
+                'A' ->
+                    ( stopPaddle Left model, Cmd.none )
+
+                'O' ->
+                    ( stopPaddle Right model, Cmd.none )
+
+                'L' ->
+                    ( stopPaddle Right model, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        KeyDown key ->
+            case key of
+                'Q' ->
+                    ( speedPaddle Left Up model, Cmd.none )
+
+                'A' ->
+                    ( speedPaddle Left Down model, Cmd.none )
+
+                'O' ->
+                    ( speedPaddle Right Up model, Cmd.none )
+
+                'L' ->
+                    ( speedPaddle Right Down model, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+
+type WhichPaddle
+    = Left
+    | Right
+
+
+type WhichDirection
+    = Up
+    | Down
+
+
+speedPaddle : WhichPaddle -> WhichDirection -> Model -> Model
+speedPaddle whichPaddle whichDirection model =
+    let
+        speed =
+            case whichDirection of
+                Up ->
+                    ( 0, -120 )
+
+                Down ->
+                    ( 0, 120 )
+    in
+        case whichPaddle of
+            Left ->
+                { model
+                    | left = setPlayerPaddleSpeed speed model.left
+                }
+
+            Right ->
+                { model
+                    | right = setPlayerPaddleSpeed speed model.right
+                }
+
+
+stopPaddle : WhichPaddle -> Model -> Model
+stopPaddle whichPaddle model =
+    case whichPaddle of
+        Left ->
+            let
+                player =
+                    model.left
+            in
+                { model | left = setPlayerPaddleSpeed ( 0, 0 ) player }
+
+        Right ->
+            let
+                player =
+                    model.right
+            in
+                { model | right = setPlayerPaddleSpeed ( 0, 0 ) player }
+
+
+setPlayerPaddleSpeed : ( Float, Float ) -> Player -> Player
+setPlayerPaddleSpeed speed p =
+    let
+        paddle =
+            p.paddle
+
+        newPaddle =
+            { paddle | speed = speed }
+    in
+        { p | paddle = newPaddle }
+
 
 advanceWorld : Model -> Time -> Model
 advanceWorld model elapsed =
     model
+        |> movePaddles elapsed
+        |> constrainPaddles
         |> moveBall elapsed
-        |> constrainAndFlip
+        |> constrainAndFlipBall
 
 
-constrainAndFlip : Model -> Model
-constrainAndFlip model =
+movePaddles : Time -> Model -> Model
+movePaddles elapsed model =
+    { model
+        | left = movePlayerPaddle elapsed model.left
+        , right = movePlayerPaddle elapsed model.right
+    }
+
+
+movePlayerPaddle : Time -> Player -> Player
+movePlayerPaddle elapsed player =
+    { player | paddle = movePaddle elapsed player.paddle }
+
+
+movePaddle : Time -> Paddle -> Paddle
+movePaddle elapsed paddle =
+    let
+        ( vx, vy ) =
+            paddle.speed
+
+        ( x, y ) =
+            paddle.position
+
+        dt =
+            Time.inSeconds elapsed
+
+        newPosition =
+            ( x {- ignore x speed ... + vx * dt -}, y + vy * dt )
+    in
+        { paddle | position = newPosition }
+
+
+constrainPaddles : Model -> Model
+constrainPaddles model =
+    { model
+        | left = constrainPlayerPaddle model.board model.left
+        , right = constrainPlayerPaddle model.board model.right
+    }
+
+
+constrainPlayerPaddle : Board -> Player -> Player
+constrainPlayerPaddle board player =
+    { player | paddle = constrainPaddle board player.paddle }
+
+
+constrainPaddle : Board -> Paddle -> Paddle
+constrainPaddle board paddle =
+    let
+        -- spacing from the top/bottom of the board
+        gap =
+            (toFloat paddle.size) * 0.02
+
+        -- spacing from half of the paddle to its borders
+        halfSize =
+            toFloat paddle.size
+
+        height =
+            toFloat board.height
+
+        ( x, y ) =
+            paddle.position
+
+        newY =
+            if (y - halfSize) < gap then
+                gap + halfSize
+            else if (y + halfSize + gap) > height then
+                height - gap - halfSize
+            else
+                y
+    in
+        { paddle | position = ( x, newY ) }
+
+
+constrainAndFlipBall : Model -> Model
+constrainAndFlipBall model =
     let
         ( x, y ) =
             model.ball.position
@@ -141,21 +322,21 @@ constrainAndFlip model =
                 | ball =
                     model.ball
                         |> flipSpeed Vertical
-                        |> constrain ( 0, 0, width, height )
+                        |> constrainBall ( 0, 0, width, height )
             }
         else if (x + r) > (toFloat width) || (x - r) < 0 then
             { model
                 | ball =
                     model.ball
                         |> flipSpeed Horizontal
-                        |> constrain ( 0, 0, width, height )
+                        |> constrainBall ( 0, 0, width, height )
             }
         else
             model
 
 
-constrain : ( Int, Int, Int, Int ) -> Ball -> Ball
-constrain ( left, top, right, bottom ) ball =
+constrainBall : ( Int, Int, Int, Int ) -> Ball -> Ball
+constrainBall ( left, top, right, bottom ) ball =
     let
         r =
             (toFloat ball.diameter) / 2
@@ -283,10 +464,10 @@ paddleView board paddle =
         div
             [ class "paddle"
             , style
-                [ ( "left", toPx x )
-                , ( "top", toPx y )
+                [ ( "left", toPx <| round x )
+                , ( "top", toPx <| round y )
                 , ( "height", toPx paddle.size )
-                , ( "width", toPx width )
+                , ( "width", toPx <| round width )
                 ]
             ]
             []
@@ -303,4 +484,8 @@ toPx i =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    AnimationFrame.diffs Advance
+    Sub.batch
+        [ AnimationFrame.diffs Advance
+        , Keyboard.downs (Char.fromCode >> KeyDown)
+        , Keyboard.ups (Char.fromCode >> KeyUp)
+        ]
